@@ -1,8 +1,8 @@
-# Inbox → AI Triage → CRM Automation Demo
+# Inbox → AI Triage → CRM → Notification
 
-**A working example of an AI-assisted automation workflow: receives an inbound message via webhook, uses Claude to classify and extract structured fields, writes to a CRM-style data store, and posts a notification to Slack or Discord.**
+**A FastAPI service that receives inbound messages via webhook, uses Claude to classify and extract structured fields, writes to a CRM-style data store, and posts a notification to Slack or Discord.**
 
-This demo is a self-contained reference implementation of the pattern an internal "AI-assisted workflow" team would build for any inbound channel — support emails, contact-form submissions, sales inquiries, vendor messages — wherever a human currently has to read, classify, and route.
+The same shape applies to any inbound channel where a human currently has to read, classify, and route — support emails, contact-form submissions, sales inquiries, vendor messages.
 
 ---
 
@@ -10,7 +10,7 @@ This demo is a self-contained reference implementation of the pattern an interna
 
 - **Webhook integration** — FastAPI endpoint that receives JSON payloads (drop-in target for any forwarding rule)
 - **AI workflow** — structured-output prompting with Claude to classify intent, extract entities, score urgency, and draft a response
-- **CRM write-back** — SQLite-backed contact + interaction store with idempotent inserts (swap for HubSpot/Pipedrive/Salesforce by replacing one module)
+- **CRM write-back** — SQLite-backed contact + interaction store with idempotent inserts; swap for HubSpot / Pipedrive / Salesforce by replacing one module
 - **Notification fan-out** — Slack or Discord webhook, formatted with the AI-extracted summary
 - **Operational primitives** — health endpoint, structured logging, retry-with-backoff on Claude calls, env-driven config
 
@@ -61,8 +61,8 @@ bash examples/run_demo.sh
 
 You should see:
 - Console log of the triage result
-- A new row in `crm.db` (inspect with `sqlite3 crm.db 'SELECT * FROM interactions'`)
-- A formatted message in your Slack/Discord channel (if `NOTIFY_WEBHOOK_URL` set)
+- A new row in `crm.db` (`sqlite3 crm.db 'SELECT * FROM interactions'`)
+- A formatted message in Slack/Discord (if `NOTIFY_WEBHOOK_URL` is set)
 
 ---
 
@@ -99,7 +99,7 @@ You should see:
 
 ### What gets written to the CRM
 
-A normalized row in `interactions` with foreign key into `contacts`. Re-sending the same payload won't double-insert (idempotency on message hash).
+A normalized row in `interactions` with a foreign key into `contacts`. Re-sending the same payload won't double-insert (idempotency on message hash).
 
 ### What gets posted to Slack/Discord
 
@@ -131,12 +131,12 @@ View in CRM: http://localhost:8000/crm/contact/{id}
 
 ## Swapping the CRM backend
 
-`crm.py` is intentionally a thin abstraction. To swap for a real CRM:
+`crm.py` is a thin abstraction. To swap for a real CRM:
 
-- **HubSpot:** replace `insert_contact` and `insert_interaction` with calls to the HubSpot v3 API (`https://api.hubapi.com/crm/v3/objects/contacts`)
-- **Pipedrive:** swap to the Pipedrive Persons + Activities endpoints
-- **Salesforce:** Salesforce REST API + a Composite Tree call to insert both records atomically
-- **Airtable / Notion / Google Sheets:** trivial — same shape, different SDK
+- **HubSpot** — replace `insert_contact` and `insert_interaction` with calls to the HubSpot v3 API (`https://api.hubapi.com/crm/v3/objects/contacts`)
+- **Pipedrive** — Pipedrive Persons + Activities endpoints
+- **Salesforce** — REST API + a Composite Tree call to insert both records atomically
+- **Airtable / Notion / Google Sheets** — same shape, different SDK
 
 The triage logic, webhook receiver, and notification fan-out don't change.
 
@@ -145,25 +145,13 @@ The triage logic, webhook receiver, and notification fan-out don't change.
 ## Deployment notes
 
 For production, swap:
-- Uvicorn dev server → systemd unit + nginx reverse proxy (Ansible roles for both in [`linux-ops-stack`](../linux-ops-stack-clean))
+
+- Uvicorn dev server → systemd unit + nginx reverse proxy (Ansible roles for both in [`linux-ops-stack`](../linux-ops-stack))
 - Local SQLite → managed PostgreSQL (`postgresql` role in same repo)
 - `.env` → secrets vault (Ansible Vault, AWS SSM, or your platform's secrets manager)
 - Stdout logs → Loki via Promtail (`loki` role in same repo)
 
 The `linux-ops-stack` repo provides the production substrate this demo would deploy onto.
-
----
-
-## Why this pattern matters
-
-Most "AI in operations" projects fail because they're either too magic (a chatbot bolted onto everything) or too narrow (one specific extractor with no integration story). This demo shows the durable pattern:
-
-1. **Channel** — webhook in
-2. **AI as a structured-output function** — not a chat, a classifier with typed return values
-3. **Side-effects to system-of-record** — CRM, ticketing, calendar, whatever
-4. **Human-visible notification** — so the team trusts what's happening and can intervene
-
-Replace any of the four boxes and the pattern still works. Replace the channel with a Gmail watch, the CRM with HubSpot, the notification with PagerDuty, and you have a different product without rewriting the AI logic.
 
 ---
 
